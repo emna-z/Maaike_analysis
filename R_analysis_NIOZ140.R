@@ -44,10 +44,14 @@ get_taxa_unique(physeq_object, "Phylum")
 length(get_taxa_unique(physeq_object,"Phylum"))
 
 #####subset & merge for plotting####
-t1 <- subset_samples (physeq_object, timepoint=="T1")
-t3 <- subset_samples (physeq_object, timepoint=="T3")
-t6 <- subset_samples(physeq_object, timepoint=="T6")
 physeq_object <- subset_samples(physeq_object, timepoint %in% c("T1", "T6", "negative_c")) 
+physeq_object <- prune_taxa(taxa_sums(physeq_object) > 1, physeq_object)
+
+#t1 <- subset_samples (physeq_object, timepoint=="T1")
+
+#t6 <- subset_samples(physeq_object, timepoint=="T6")
+
+
 #merge_samples(GlobalPatterns, group = factor(as.character(unlist(sample_data(GlobalPatterns)[,"SampleType"]))))
 euk <- subset_taxa(physeq_object, Domain=="Eukaryota")
 arch <- subset_taxa(physeq_object, Domain=="Archaea")
@@ -58,13 +62,24 @@ summarize_phyloseq(physeq_object)
 alpha_tab <-microbiome::alpha(physeq_object, index = "all")
 write.csv(alpha_tab, file = "./alpha_div/alpha_div_indexes_no_t3_no_8seq.csv")
 
-microbiome::plot_taxa_prevalence(physeq_object, "Phylum", 1) #prevalence
+microbiome::plot_taxa_prevalence(physeq_object, "Phylum", 1)+ theme(legend.position = "none") #prevalence
 
 ###### filter otus #########
 
-condition <- function (x) {sum(x) >= 5}  # min number of reads 5 & present in at least 2 samples
-taxaToKeep <- genefilter_sample(otu_table(physeq_object), condition,  2 ) 
-physeq_object <- prune_taxa(taxaToKeep, physeq_object)
+#funtion to filter otu fraction < 0.01
+filter_0.01 <- function(physeq, frac = 0.01){
+  ## Estimate total abundance of OTUs
+  total <- sum(phyloseq::taxa_sums(physeq))
+  ## Remove OTUs
+  res <- phyloseq::filter_taxa(physeq, function(x){ ( sum(x)/total ) > frac }, prune = TRUE)
+  return(res)
+}
+
+physeq_object <- filter_0.01(physeq_object)
+
+#condition <- function (x) {sum(x) >= 5}  
+#taxaToKeep <- genefilter_sample(physeq_object, condition,  2 ) # min number of reads 5 & present in at least 2 samples
+#physeq_object <- prune_taxa(taxaToKeep, physeq_object)
 
 
 
@@ -72,7 +87,7 @@ physeq_object <- prune_taxa(taxaToKeep, physeq_object)
 physeq_t <- transform_sample_counts(physeq_object, function(x)  x/sum(x))
 
 p_bar <- plot_bar(physeq_object, x= "Material", fill = "Domain")
-p_bar+geom_bar(aes(color=Domain, fill=Domain), stat="identity", position="stack") + theme_classic() +  facet_wrap (treatment~timepoint) 
+p_bar+geom_bar(aes(color=Domain, fill=Domain), stat="identity", position="stack") + theme_classic() +  facet_grid (treatment~timepoint) 
 
 
 #colors#
