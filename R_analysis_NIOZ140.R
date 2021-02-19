@@ -21,6 +21,7 @@ physeq_object = merge_phyloseq(otu, tax, map)
 
 
 ####basic_info#####
+summarize_phyloseq(physeq_object)
 ntaxa(physeq_object)
 nsamples(physeq_object)  ###there's 71 samples in the OTU table and 74 in the mapping file any idea why? never mind, I found in the report that 3 of them had nothing whatsoever
 sample_names(physeq_object)
@@ -29,29 +30,59 @@ rank_names(physeq_object)
 sample_sums(physeq_object)
 taxa_sums(physeq_object)
 min(sample_sums(physeq_object)) #it says 7 sequences here. In the report it says 8, not much of a difference but wondering how to deal wih a sample like that
+physeq_object <-  subset_samples(physeq_object, sample_names(physeq_object)!="NIOZ140.90") #eliminate the sample with 7seq
+#physeq_object <-  subset_samples(physeq_object,(sample_sums(physeq_object) >= 1000))
 max(sample_sums(physeq_object))
-get_taxa_unique(physeq_object,"Phylum")
-length(get_taxa_unique(physeq_object,"Phylum"))
 
+##########gettingrid of wonky taxonomy assignments ###########
+get_taxa_unique(physeq_object, "Domain") # unassigned in Domains
+physeq_object <- subset_taxa(physeq_object, !is.na(Domain) & !Domain%in% c("", "Unassigned")) #let's eliminate those otus
+get_taxa_unique(physeq_object, "Domain") # all good now
+get_taxa_unique(physeq_object, "Phylum") # let's check the Phyla, there's "NA"
+physeq_object <- subset_taxa(physeq_object, !is.na(Phylum) & !Phylum%in% c("NA"," NA" )) 
+get_taxa_unique(physeq_object, "Phylum")
+length(get_taxa_unique(physeq_object,"Phylum"))
 
 #####subset & merge for plotting####
 t1 <- subset_samples (physeq_object, timepoint=="T1")
 t3 <- subset_samples (physeq_object, timepoint=="T3")
 t6 <- subset_samples(physeq_object, timepoint=="T6")
-physeq <- subset_samples(physeq_object, timepoint %in% c("T1", "T6", "-c")) 
+physeq_object <- subset_samples(physeq_object, timepoint %in% c("T1", "T6", "negative_c")) 
 #merge_samples(GlobalPatterns, group = factor(as.character(unlist(sample_data(GlobalPatterns)[,"SampleType"]))))
-euk <- subset_taxa(physeq = physeq_object, Domain=="Eukaryota")
-arch <- subset_taxa(physeq = pseq, Domain=="Archaea")
+euk <- subset_taxa(physeq_object, Domain=="Eukaryota")
+arch <- subset_taxa(physeq_object, Domain=="Archaea")
+bact <- subset_taxa(physeq_object, Domain=="Bacteria")
+
+############### alpha div ###################
+summarize_phyloseq(physeq_object)
+alpha_tab <-microbiome::alpha(physeq_object, index = "all")
+write.csv(alpha_tab, file = "./alpha_div/alpha_div_indexes_no_t3_no_8seq.csv")
+
+microbiome::plot_taxa_prevalence(physeq_object, "Phylum", 1) #prevalence
+
+###### filter otus #########
+
+condition <- function (x) {sum(x) >= 5}  # min number of reads 5 & present in at least 2 samples
+taxaToKeep <- genefilter_sample(otu_table(physeq_object), condition,  2 ) 
+physeq_object <- prune_taxa(taxaToKeep, physeq_object)
 
 
-t3 <- transform_sample_counts(t3, function(x)  x/sum(x))
-t3<- microbiome::transform(t3, "compositional")
 
-CPCOLS <- c("#199442", "#ED1F1F", "#F5EE2C", "#B636D6", "#3D68E0", "#EBA53D", "#00688B", "#CDCD00", "#EE3A8C", "#00EE76", "#CD9B9B", "#00BFFF", "#FFF68F", "#FF7F50", "#68228B", "#ADFF2F", "#CD0000", "#0000FF", "#CD9B1D", "#FF34B3", "#BBFFFF", "#191970") 
-C<- c("#14A821", "#E6DB45", "#EB2C2C", "#4BEE8", "#C66EE6")
+####### let's make bar plots #########
+physeq_t <- transform_sample_counts(physeq_object, function(x)  x/sum(x))
+
+p_bar <- plot_bar(physeq_object, x= "Material", fill = "Domain")
+p_bar+geom_bar(aes(color=Domain, fill=Domain), stat="identity", position="stack") + theme_classic() +  facet_wrap (treatment~timepoint) 
+
+
+#colors#
+#CPCOLS <- c("#199442", "#ED1F1F", "#F5EE2C", "#B636D6", "#3D68E0", "#EBA53D", "#00688B", "#CDCD00", "#EE3A8C", "#00EE76", "#CD9B9B", "#00BFFF", "#FFF68F", "#FF7F50", "#68228B", "#ADFF2F", "#CD0000", "#0000FF", "#CD9B1D", "#FF34B3", "#BBFFFF", "#191970") 
+#("#14A821", "#E6DB45", "#EB2C2C", "#4BEE8", "#C66EE6")
+
 pbar <- plot_bar(arch,x="Material", fill = "Family")
 pbar+ geom_bar(aes(color=Family, fill=Family), stat="identity", position="stack") + scale_fill_manual(values=CPCOLS) + 
   scale_color_manual(values= CPCOLS )+ theme_classic()+facet_wrap (.~timepoint)
+
 ######bar_plots_diversity#####
 pseq <- microbiome::transform(physeq_object, "compositional")
 
@@ -63,13 +94,7 @@ pbar <- plot_bar(merged_plastic, fill = "Phylum")
 pbar+geom_bar(aes(color=Phylum, fill=Phylum), stat="identity", position="stack") + theme_classic()
 
 
-###############MIA & microbiome packages###################
 
-
-summarize_phyloseq(physeq_object)
-alpha_tab <-microbiome::alpha(physeq_object, index = "all")
-write.csv(alpha_tab, file = "./alpha_div_indexes.csv")
-install.packages("ggrepel")
 
 ################alpha_div_idexes################
 a_div <- readxl::read_xlsx("alpha_div_indexes.xlsx", na = "NA")
