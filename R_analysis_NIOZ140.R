@@ -11,7 +11,7 @@ library("microbiomeutilities")
 library("TreeSummarizedExperiment")
 #install.packages("ggpubr")
 library(ggpubr)
-
+library("wesanderson")
 
 #####data_import######
 tax <- as.matrix(read.delim('./data/taxTable_noSingletons.txt', row.names = 1, na.strings = "NA"))
@@ -37,7 +37,7 @@ physeq_object <-  subset_samples(physeq_object, sample_names(physeq_object)!="NI
 #physeq_object <-  subset_samples(physeq_object,(sample_sums(physeq_object) >= 1000))
 max(sample_sums(physeq_object))
 
-#####subset & merge ####
+#####subset T3 & merge ####
 sub1 <- subset_samples(physeq_object, timepoint %in% c("T1", "T6"))
 sub2 <- subset_samples(physeq_object, surface=="negative_c")
 physeq_object <- merge_phyloseq(sub1, sub2)
@@ -50,7 +50,8 @@ get_taxa_unique(physeq_object, "Phylum") # let's check the Phyla, there's "NA"
 physeq_object <- subset_taxa(physeq_object, !is.na(Phylum) & !Phylum%in% c("NA"," NA" )) 
 get_taxa_unique(physeq_object, "Phylum")
 length(get_taxa_unique(physeq_object,"Phylum"))
-
+physeq_object <- subset_taxa(physeq_object, !Order%in% c(" Chloroplast")) 
+physeq_object <- subset_taxa(physeq_object, !Order%in% c(" Mitochondria"))
 
 physeq_object <- prune_taxa(taxa_sums(physeq_object) > 1, physeq_object) #no singletons
 
@@ -79,7 +80,37 @@ p <- ggboxplot(metad, x = "Material", y = "evenness_simpson",
 p
 
 
+plot <- plot_richness(physeq_object, "Material", "treatment", measures="Simpson")+facet_wrap(~timepoint)
+plot + geom_boxplot(data=plotGP$data, aes(Material,value,color=NULL), alpha=0.3)
+
 microbiome::plot_taxa_prevalence(physeq_object, "Phylum")+ theme(legend.position = "none") #prevalence
+
+
+#########merge samples per surface all replicates together##########
+merged <- collapse_replicates(physeq_object, method = "sample", replicate_fields = c("description", "surface"))
+
+
+
+
+####### let's make bar plots #########
+#mean_PGroup = sapply(levels((as.factor(physeq_object_f@sam_data$description))),function(i){
+ # rowMeans(otu_table(PGroup)[,SampleType==i])})
+#install.packages("wesanderson")
+
+physeq_t <- transform_sample_counts(merged, function(x)  x/sum(x)) #get relative abundance
+physeq_t_no_control <- subset_samples(physeq_t, timepoint %in% c("T1", "T6")) #get ridof negative control for esthetic reasons :)
+
+p_bar <- plot_bar(physeq_t_no_control, x= "Material", fill = "Domain")
+p_bar+geom_bar(aes(color=Domain, fill=Domain), stat="identity", position="stack") + theme_classic() + scale_fill_manual(values=wes_palette( name="Darjeeling1")) + 
+  scale_color_manual(values=wes_palette( name="Darjeeling1"))+ theme_classic() +  facet_grid (timepoint~treatment) 
+
+p_bar <- plot_bar(physeq_t_no_control, x= "Material", fill = "Phylum")
+p_bar+geom_bar(aes(color=Phylum, fill=Phylum), stat="identity", position="stack") + theme_pubclean() +  facet_grid (treatment~timepoint) 
+
+
+#colors#
+CPCOLS <- c("#199442", "#ED1F1F", "#F5EE2C", "#B636D6", "#3D68E0", "#EBA53D", "#00688B", "#CDCD00", "#EE3A8C", "#00EE76", "#CD9B9B", "#00BFFF", "#FFF68F", "#FF7F50", "#68228B", "#ADFF2F", "#CD0000", "#0000FF", "#CD9B1D", "#FF34B3", "#BBFFFF", "#191970") 
+c("#14A821", "#E6DB45", "#EB2C2C", "#4BEE8", "#C66EE6")
 
 ###### filter otus #########
 
@@ -90,7 +121,7 @@ microbiome::plot_taxa_prevalence(physeq_object, "Phylum")+ theme(legend.position
 
 
 #funtion to filter otu fraction < 0.01
-filter_0.005 <- function(physeq, frac = 0.005){
+filter_0.001 <- function(physeq, frac = 0.001){
   ## Estimate total abundance of OTUs
   total <- sum(phyloseq::taxa_sums(physeq))
   ## Remove OTUs
@@ -98,51 +129,17 @@ filter_0.005 <- function(physeq, frac = 0.005){
   return(res)
 }
 
-physeq_object_f <- filter_0.005(physeq_object)
+physeq_object_f <- filter_0.001(physeq_object)
 
 summarize_phyloseq(physeq_object_f)
-#########merge samples per surface all replicates together##########
-merged <- collapse_replicates(physeq_object, method = "sample", replicate_fields = c("description", "surface"))
+
+merged <- collapse_replicates(physeq_object_f, method = "sample", replicate_fields = c("description", "surface"))
+merged<- transform_sample_counts(merged, function(x)  x/sum(x))
 
 
-
-
-####### let's make bar plots #########
-#mean_PGroup = sapply(levels((as.factor(physeq_object_f@sam_data$description))),function(i){
- # rowMeans(otu_table(PGroup)[,SampleType==i])})
-
-
-physeq_t <- transform_sample_counts(merged, function(x)  x/sum(x))
-
-p_bar <- plot_bar(physeq_t, x= "Material", fill = "Phylum")
-p_bar+geom_bar(aes(color=Phylum, fill=Phylum), stat="identity", position="stack") + theme_pubclean() +  facet_grid (treatment~timepoint) 
-
-
-#colors#
-#CPCOLS <- c("#199442", "#ED1F1F", "#F5EE2C", "#B636D6", "#3D68E0", "#EBA53D", "#00688B", "#CDCD00", "#EE3A8C", "#00EE76", "#CD9B9B", "#00BFFF", "#FFF68F", "#FF7F50", "#68228B", "#ADFF2F", "#CD0000", "#0000FF", "#CD9B1D", "#FF34B3", "#BBFFFF", "#191970") 
-#("#14A821", "#E6DB45", "#EB2C2C", "#4BEE8", "#C66EE6")
-
-pbar <- plot_bar(arch,x="Material", fill = "Family")
-pbar+ geom_bar(aes(color=Family, fill=Family), stat="identity", position="stack") + scale_fill_manual(values=CPCOLS) + 
+pbar <- plot_bar(merged,x="surface", fill = "Order")
+pbar+ geom_bar(aes(color=Order, fill=Order), stat="identity", position="stack") + scale_fill_manual(values=CPCOLS) + 
   scale_color_manual(values= CPCOLS )+ theme_classic()+facet_wrap (.~timepoint)
 
-######bar_plots_diversity#####
-pseq <- microbiome::transform(physeq_object, "compositional")
-
-p_bar <- plot_bar(pseq, fill = "Domain")
-p_bar+geom_bar(aes(color=Domain, fill=Domain), stat="identity", position="stack") + theme_classic() + scale_fill_manual(values=wes_palette( name="Darjeeling1")) + 
-  scale_color_manual(values=wes_palette( name="Darjeeling1"))+ theme_classic() +  facet_wrap (.~treatment) 
-
-pbar <- plot_bar(merged_plastic, fill = "Phylum")
-pbar+geom_bar(aes(color=Phylum, fill=Phylum), stat="identity", position="stack") + theme_classic()
-
-
-
-
-################alpha_div_idexes################
-a_div <- readxl::read_xlsx("alpha_div_indexes.xlsx", na = "NA")
-
-plotGP <- plot_richness(physeq_object, "Material", "treatment", measures="Simpson")+facet_wrap()
-plotGP + geom_boxplot(data=plotGP$data, aes(Material,value,color=NULL), alpha=0.1)
 
 
