@@ -1,3 +1,4 @@
+library(devtools)
 library(phyloseq)
 library(grid)
 library(tidyverse)
@@ -8,6 +9,8 @@ library("DESeq2")
 library("microbiome")
 library("microbiomeutilities")
 library("TreeSummarizedExperiment")
+#install.packages("ggpubr")
+library(ggpubr)
 
 
 #####data_import######
@@ -15,7 +18,7 @@ tax <- as.matrix(read.delim('./data/taxTable_noSingletons.txt', row.names = 1, n
 tax <- tax_table(tax)
 otu <- as.matrix(read.delim("./data/otuTable_noSingletons_no_first_line.txt", row.names = 1))
 otu <- otu_table(otu, taxa_are_rows = T)
-map <- sample_data(read.delim("./data/mapping_file_details.txt", row.names = 1))
+map <- sample_data(read.delim("./data/mapping_file_details.txt", row.names = 1, na.strings = c("NA", "")))
 physeq_object = merge_phyloseq(otu, tax, map)                 
 
 
@@ -34,6 +37,11 @@ physeq_object <-  subset_samples(physeq_object, sample_names(physeq_object)!="NI
 #physeq_object <-  subset_samples(physeq_object,(sample_sums(physeq_object) >= 1000))
 max(sample_sums(physeq_object))
 
+#####subset & merge ####
+sub1 <- subset_samples(physeq_object, timepoint %in% c("T1", "T6"))
+sub2 <- subset_samples(physeq_object, surface=="negative_c")
+physeq_object <- merge_phyloseq(sub1, sub2)
+
 ##########gettingrid of wonky taxonomy assignments ###########
 get_taxa_unique(physeq_object, "Domain") # unassigned in Domains
 physeq_object <- subset_taxa(physeq_object, !is.na(Domain) & !Domain%in% c("", "Unassigned")) #let's eliminate those otus
@@ -43,9 +51,8 @@ physeq_object <- subset_taxa(physeq_object, !is.na(Phylum) & !Phylum%in% c("NA",
 get_taxa_unique(physeq_object, "Phylum")
 length(get_taxa_unique(physeq_object,"Phylum"))
 
-#####subset & merge for plotting####
-physeq_object <- subset_samples(physeq_object, timepoint %in% c("T1", "T6", "negative_c")) 
-physeq_object <- prune_taxa(taxa_sums(physeq_object) > 1, physeq_object)
+
+physeq_object <- prune_taxa(taxa_sums(physeq_object) > 1, physeq_object) #no singletons
 
 #t1 <- subset_samples (physeq_object, timepoint=="T1")
 
@@ -61,13 +68,29 @@ bact <- subset_taxa(physeq_object, Domain=="Bacteria")
 summarize_phyloseq(physeq_object)
 alpha_tab <-microbiome::alpha(physeq_object, index = "all")
 write.csv(alpha_tab, file = "./alpha_div/alpha_div_indexes_no_t3_no_8seq.csv")
+metad <- data.frame(physeq_object@sam_data) 
+metad$Shannon <- alpha_tab$diversity_shannon 
+metad$evenness_simpson <- alpha_tab$evenness_simpson 
+metad <- filter(metad, timepoint %in% c("T1", "T6"))
 
-microbiome::plot_taxa_prevalence(physeq_object, "Phylum", 1)+ theme(legend.position = "none") #prevalence
+p <- ggboxplot(metad, x = "Material", y = "evenness_simpson",
+               color = "Material", palette =c("#5FB233FF" ,"#6A7F93FF" ,"#F57206FF" ,"#EB0F13FF", "#8F2F8BFF", "#1396DBFF"),
+               add = "jitter", shape = "treatment", size = 1) + facet_wrap(~timepoint)
+p
+
+
+microbiome::plot_taxa_prevalence(physeq_object, "Phylum")+ theme(legend.position = "none") #prevalence
 
 ###### filter otus #########
 
+
+#condition <- function (x) {sum(x) >= 5}  
+#taxaToKeep <- genefilter_sample(physeq_object, condition,  2 ) # min number of reads 5 & present in at least 2 samples
+#physeq_object_f <- prune_taxa(taxaToKeep, physeq_object)
+
+
 #funtion to filter otu fraction < 0.01
-filter_0.01 <- function(physeq, frac = 0.01){
+filter_0.005 <- function(physeq, frac = 0.005){
   ## Estimate total abundance of OTUs
   total <- sum(phyloseq::taxa_sums(physeq))
   ## Remove OTUs
@@ -75,19 +98,24 @@ filter_0.01 <- function(physeq, frac = 0.01){
   return(res)
 }
 
-physeq_object <- filter_0.01(physeq_object)
+physeq_object_f <- filter_0.005(physeq_object)
 
-#condition <- function (x) {sum(x) >= 5}  
-#taxaToKeep <- genefilter_sample(physeq_object, condition,  2 ) # min number of reads 5 & present in at least 2 samples
-#physeq_object <- prune_taxa(taxaToKeep, physeq_object)
+summarize_phyloseq(physeq_object_f)
+#########merge samples per surface all replicates together##########
+merged <- collapse_replicates(physeq_object, method = "sample", replicate_fields = c("description", "surface"))
+
 
 
 
 ####### let's make bar plots #########
-physeq_t <- transform_sample_counts(physeq_object, function(x)  x/sum(x))
+#mean_PGroup = sapply(levels((as.factor(physeq_object_f@sam_data$description))),function(i){
+ # rowMeans(otu_table(PGroup)[,SampleType==i])})
 
-p_bar <- plot_bar(physeq_object, x= "Material", fill = "Domain")
-p_bar+geom_bar(aes(color=Domain, fill=Domain), stat="identity", position="stack") + theme_classic() +  facet_grid (treatment~timepoint) 
+
+physeq_t <- transform_sample_counts(merged, function(x)  x/sum(x))
+
+p_bar <- plot_bar(physeq_t, x= "Material", fill = "Phylum")
+p_bar+geom_bar(aes(color=Phylum, fill=Phylum), stat="identity", position="stack") + theme_pubclean() +  facet_grid (treatment~timepoint) 
 
 
 #colors#
