@@ -51,7 +51,7 @@ physeq_object <- subset_taxa(physeq_object, !is.na(Phylum) & !Phylum%in% c("NA",
 get_taxa_unique(physeq_object, "Phylum")
 length(get_taxa_unique(physeq_object,"Phylum"))
 physeq_object <- subset_taxa(physeq_object, !Order%in% c(" Chloroplast")) 
-physeq_object <- subset_taxa(physeq_object, !Order%in% c(" Mitochondria"))
+physeq_object <- subset_taxa(physeq_object, !Family%in% c(" Mitochondria"))
 
 physeq_object <- prune_taxa(taxa_sums(physeq_object) > 1, physeq_object) #no singletons
 
@@ -61,9 +61,9 @@ physeq_object <- prune_taxa(taxa_sums(physeq_object) > 1, physeq_object) #no sin
 
 
 #merge_samples(GlobalPatterns, group = factor(as.character(unlist(sample_data(GlobalPatterns)[,"SampleType"]))))
-euk <- subset_taxa(physeq_object, Domain=="Eukaryota")
-arch <- subset_taxa(physeq_object, Domain=="Archaea")
-bact <- subset_taxa(physeq_object, Domain=="Bacteria")
+#euk <- subset_taxa(physeq_object, Domain=="Eukaryota")
+#arch <- subset_taxa(physeq_object, Domain=="Archaea")
+#bact <- subset_taxa(physeq_object, Domain=="Bacteria")
 
 ############### alpha div ###################
 summarize_phyloseq(physeq_object)
