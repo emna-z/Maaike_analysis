@@ -56,6 +56,21 @@ physeq_object <- subset_taxa(physeq_object, !Family%in% c(" Mitochondria"))
 
 physeq_object <- prune_taxa(taxa_sums(physeq_object) > 1, physeq_object) #no singletons
 
+taxo <- as.data.frame(physeq_object@tax_table)
+for (i in 1:nrow(taxo)) {
+  for (y in 1:ncol(taxo)) {
+    if 
+    (any(str_detect(taxo[i,y], c("uncultured","metagenome","unknown","NA")))) {
+      taxo[i,y] <- "unassigned" }
+  }
+}
+
+taxo <- tax_table(as.matrix(taxo))
+
+
+physeq_object <- merge_phyloseq(physeq_object@otu_table, taxo, map)
+
+
 #t1 <- subset_samples (physeq_object, timepoint=="T1")
 
 #t6 <- subset_samples(physeq_object, timepoint=="T6")
@@ -130,6 +145,7 @@ tidy_psmelt <- function(physeq) {
 
 #merged <- collapse_replicates(physeq_object, method = "sample", replicate_fields = c("description", "surface"))
 tidy_physeq <- tidy_psmelt(physeq_object)
+
 t2 <- tidy_physeq  %>% group_by(Sample) %>% mutate(Sample_relative_abundance = Abundance / sum(Abundance))
 t2 <- t2  %>% group_by(description) %>% mutate( relative_abundance = Sample_relative_abundance / sum(Sample_relative_abundance))
 
@@ -138,57 +154,65 @@ t2$ReversePrimerSequence <- NULL
 t2$InputFileName <- NULL
 t2$BarcodeSequence <- NULL
 t2$BarcodeSequence_1 <- NULL
+
+
+
 #physeq_object = merge_phyloseq(otu, tax_table(physeq_object), sample_data(physeq_object))    
 ####### let's make bar plots #########
-t3 <- filter(t2, relative_abundance>=0.01) %>% ungroup()
-others <- filter(t2, relative_abundance<0.01) %>% ungroup()
-others$Domain <- "others<0.01"
-others$Phylum <- "others<0.01"
-others$Class <- "others<0.01"
-others$Order <- "others<0.01"
-others$Family <- "others<0.01"
-others$Genus <- "others<0.01"
-others$Species <- "others<0.01"
+#t3 <- filter(t2, relative_abundance>=0.01) %>% ungroup()
+#others <- filter(t2, relative_abundance<0.01) %>% ungroup()
 
 
-t4 <- full_join(t3,others)
-t5 <- filter (t4, timepoint %in% c("T1", "T6")) 
 
-Phyla <- t5 %>% group_by(description, Phylum) %>% mutate(Phyla_relative_abundance = sum(relative_abundance)) %>% select(description, Phylum, Phyla_relative_abundance, treatment, timepoint, Material)%>% distinct()
+#t4 <- full_join(t3,others)
+#t5 <- filter (t4, timepoint %in% c("T1", "T6")) 
+
+Phyla <- t2 %>% group_by(description, Phylum) %>% mutate(Phyla_relative_abundance = sum(relative_abundance)) %>% select(description, Phylum, Phyla_relative_abundance, treatment, timepoint, Material)%>% 
+            distinct() %>%mutate(Phylum = ifelse(Phyla_relative_abundance<0.01, "others<0.01", Phylum)) %>%   filter ( timepoint %in% c("T1", "T6")) #%>% mutate(timepoint = ifelse(Material =="negative_c", "T1", timepoint))
 
 ggplot(Phyla, aes(x=Material, y= Phyla_relative_abundance, fill=Phylum))+
-  geom_bar(stat="identity", position="stack")+ scale_fill_brewer(palette = "Paired")+
+  geom_bar(stat="identity", position="stack")+ scale_fill_manual(values = CPCOLS)+
   theme_classic2()+  facet_grid (timepoint~treatment)
 
 
-Class <- t5 %>% group_by(description, Class) %>% mutate(Class_relative_abundance = sum(relative_abundance)) %>% select(description, Class, Class_relative_abundance, treatment, timepoint, Material)%>% distinct()
+Class <- t2 %>% group_by(description, Class) %>% mutate(Class_relative_abundance = sum(relative_abundance)) %>% select(description, Class, Class_relative_abundance, treatment, timepoint, Material)%>% 
+          distinct()  %>%mutate(Class = ifelse(Class_relative_abundance<0.01, "others<0.01", Class)) %>%  filter ( timepoint %in% c("T1", "T6"))
+
 
 ggplot(Class, aes(x=Material, y= Class_relative_abundance, fill=Class))+
   geom_bar(stat="identity", position="stack")+ scale_fill_manual(values = CPCOLS)+
   theme_classic()+  facet_grid (timepoint~treatment)
 
-Order <- t5 %>% group_by(description, Order) %>% mutate(Order_relative_abundance = sum(relative_abundance)) %>% select(description, Order, Order_relative_abundance, treatment, timepoint, Material)%>% distinct()
+Order <- t2 %>% group_by(description, Order) %>% mutate(Order_relative_abundance = sum(relative_abundance)) %>% select(description, Order, Order_relative_abundance, treatment, timepoint, Material)%>% 
+          distinct() %>% mutate(Order = ifelse(Order_relative_abundance<0.01, "others<0.01", Order))   %>% filter ( timepoint %in% c("T1", "T6"))
+
 
 ggplot(Order, aes(x=Material, y= Order_relative_abundance, fill=Order))+
   geom_bar(stat="identity", position="stack")+ scale_color_brewer()+ theme_classic()+  facet_grid (timepoint~treatment)
 
-Family <- t5 %>% group_by(description, Family) %>% mutate(Family_relative_abundance = sum(relative_abundance)) %>% select(description, Family, Family_relative_abundance, treatment, timepoint, Material)%>% distinct()
+Family <- t2 %>% group_by(description, Family) %>% mutate(Family_relative_abundance = sum(relative_abundance)) %>% select(description, Family, Family_relative_abundance, treatment, timepoint, Material)%>% 
+  distinct() %>% mutate(Family = ifelse(Family_relative_abundance<0.01, "others<0.01", Family)) %>% filter ( timepoint %in% c("T1", "T6"))
 
 ggplot(Family, aes(x=Material, y= Family_relative_abundance, fill=Family))+
   geom_bar(stat="identity", position="stack")+ scale_color_brewer()+
   theme_classic()+  facet_grid (timepoint~treatment)
 
-Genus <- t5 %>% group_by(description, Genus) %>% mutate(Genus_relative_abundance = sum(relative_abundance)) %>% select(description, Genus, Genus_relative_abundance, treatment, timepoint, Material)%>% distinct()
+Genus <- t2 %>% group_by(description, Genus) %>% mutate(Genus_relative_abundance = sum(relative_abundance)) %>% select(description, Genus, Genus_relative_abundance, treatment, timepoint, Material)%>%
+  distinct()%>% mutate(Genus = ifelse(Genus_relative_abundance<0.01, "others<0.01", Genus))  %>% 
+  filter ( timepoint %in% c("T1", "T6"))
 
 ggplot(Genus, aes(x=Material, y= Genus_relative_abundance, fill=Genus))+
   geom_bar(stat="identity", position="stack")+ scale_color_brewer()+ 
   theme_classic()+  facet_grid (timepoint~treatment)
 
-Species <- t5 %>% group_by(description, Species) %>% mutate(Species_relative_abundance = sum(relative_abundance)) %>% select(description, Species, Species_relative_abundance, treatment, timepoint, Material)%>% distinct()
+Species <- t2 %>% group_by(description, Species) %>% mutate(Species_relative_abundance = sum(relative_abundance)) %>% select(description, Species, Species_relative_abundance, treatment, timepoint, Material)%>% 
+  distinct() %>% mutate(Species = ifelse(Species_relative_abundance<0.01, "others<0.01", Species))  %>% 
+  filter ( timepoint %in% c("T1", "T6"))
 
 ggplot(Species, aes(x=Material, y= Species_relative_abundance, fill=Species))+
   geom_bar(stat="identity", position="stack")+ scale_fill_manual(values = CPCOLS)+
-  theme_classic()+  facet_grid (timepoint~treatment)
+  theme_classic()+  facet_grid (timepoint~treatment)+
+  theme (axis.text.x = element_text(face="bold"), axis.text.y = element_text(face="bold") ) 
 
 #colors_vector_to_personalize#
 CPCOLS <- c("#199442", "#ED1F1F", "#F5EE2C", "#B636D6", "#3D68E0", "#EBA53D", "#00688B", "#00EE76", "#CD9B9B", "#00BFFF", "#FFF68F", "#FF7F50", "#68228B", "#ADFF2F", "#CD0000", "#0000FF", "#CD9B1D", "#FF34B3", "#BBFFFF", "#191970") 
@@ -206,3 +230,20 @@ ggplot(t2_no_na_genus,aes(x=description,y=Genus,fill=Genus_relative_abundance))+
   geom_tile(colour="white",size=0.25)+ labs(x="",y="")+
   geom_text(aes(label = round(Genus_relative_abundance, 3)), colour = "Black" , size = 3)+ scale_fill_gradientn(colours =  pal)+
   theme (axis.text.x = element_text(face="bold", angle=90), axis.text.y = element_text(face="bold") ) 
+
+
+###########beta_div####################
+library(scater)
+taxa_b <- unique(t3$OTU)
+p <- subset_taxa(physeq_object, taxa_names(physeq_object)%in%taxa_b)
+p <- microbiome::transform(physeq_object, transform = "hellinger")
+
+plots <- lapply(c("MDS_BC","MDS_euclidean","NMDS_BC","NMDS_euclidean"),
+                plotReducedDim, object = physeq_object, colour_by = "surface", shape_by ="timepoint" )
+ggpubr::ggarrange(plotlist = plots, nrow = 2, ncol = 2, common.legend = TRUE,
+                  legend = "right")
+
+
+p_otu <- as.data.frame(p@otu_table)
+BC.nmds = metaMDS(p_otu, distance="bray", k=2, trymax=1000)
+
