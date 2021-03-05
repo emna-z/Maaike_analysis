@@ -60,7 +60,7 @@ taxo <- as.data.frame(physeq_object@tax_table)
 for (i in 1:nrow(taxo)) {
   for (y in 1:ncol(taxo)) {
     if 
-    (any(str_detect(taxo[i,y], c("uncultured","metagenome","unknown","NA")))) {
+    (any(str_detect(taxo[i,y], c("uncultured","Uncultured","metagenome", "Metagenome","unknown", "Unknown","NA")))) {
       taxo[i,y] <- "unassigned" }
   }
 }
@@ -81,10 +81,13 @@ physeq_object <- merge_phyloseq(physeq_object@otu_table, taxo, map)
 #arch <- subset_taxa(physeq_object, Domain=="Archaea")
 #bact <- subset_taxa(physeq_object, Domain=="Bacteria")
 
+
+
+
 ############### alpha div ###################
 summarize_phyloseq(physeq_object)
 alpha_tab <-microbiome::alpha(physeq_object, index = "all")
-write.csv(alpha_tab, file = "./alpha_div/alpha_div_indexes_microbiome.csv")
+write.csv(alpha_tab, file = "./alpha_div/alpha_div_indexes_microbiome_2.csv")
 metad <- data.frame(physeq_object@sam_data) 
 metad$Shannon <- alpha_tab$diversity_shannon 
 metad$evenness_simpson <- alpha_tab$evenness_simpson 
@@ -97,7 +100,7 @@ p
 
 
 a <- phyloseq::estimate_richness(physeq_object)
-write.csv(a, file = "./alpha_div/alpha_div_indexes_phyloseq.csv")
+write.csv(a, file = "./alpha_div/alpha_div_indexes_phyloseq_2.csv")
 plot <- plot_richness(m, "Material", "treatment", measures="Chao1")+facet_grid(treatment~timepoint)
 plot + geom_boxplot(data=plot$data, aes(Material,value,color=NULL), alpha=0.3)+ labs(title = "Alpha Diversity", subtitle ="Chao1", x =NULL , y = NULL )+theme_light()
 
@@ -233,17 +236,43 @@ ggplot(t2_no_na_genus,aes(x=description,y=Genus,fill=Genus_relative_abundance))+
 
 
 ###########beta_div####################
-library(scater)
-taxa_b <- unique(t3$OTU)
-p <- subset_taxa(physeq_object, taxa_names(physeq_object)%in%taxa_b)
-p <- microbiome::transform(physeq_object, transform = "hellinger")
 
-plots <- lapply(c("MDS_BC","MDS_euclidean","NMDS_BC","NMDS_euclidean"),
-                plotReducedDim, object = physeq_object, colour_by = "surface", shape_by ="timepoint" )
-ggpubr::ggarrange(plotlist = plots, nrow = 2, ncol = 2, common.legend = TRUE,
-                  legend = "right")
+####ord_amp_vis####
+library(ampvis2)
 
 
-p_otu <- as.data.frame(p@otu_table)
-BC.nmds = metaMDS(p_otu, distance="bray", k=2, trymax=1000)
+p_otu<-  as(otu_table(physeq_object), "matrix")
+map2 <- as(sample_data(physeq_object), "data.frame")
+taxa <- as(tax_table(physeq_object), "matrix")
+colnames(taxa)[1] <- "Kingdom"
+for (t in 1:length(map2[,"timepoint"])) {
+if (is.na(map2[t,"timepoint"])==T) {
+map2[t,"timepoint"] <- "pcr"  
+}  
+}
+
+for (t in 1:length(map2[,"treatment"])) {
+  if (is.na(map2[t,"treatment"])==T) {
+    map2[t,"treatment"] <- "-"  
+  }  
+}
+colnames(map2)
+map2 <- rownames_to_column(map2)
+colnames(map2)[1] <- "sample ID"
+p_otu <- data.frame(p_otu)
+p_otu <- rownames_to_column(p_otu)
+colnames(p_otu)[1] <- "OTU"
+taxa <- data.frame(taxa)
+taxa <- rownames_to_column(taxa)
+colnames(taxa)[1] <- "OTU"
+
+
+data <-  amp_load(p_otu, metadata = map2, taxonomy = taxa, check.names=F)
+bray_PCOA <- amp_ordinate(data , transform = "none", type = "PCOA", distmeasure= "bray", sample_label_size=4, envfit_factor= c("treatment", "Material", "timepoint"), sample_color_by = "treatment", sample_label_by= "Material",sample_shape_by ="timepoint", species_plot = F, detailed_output=T)
+
+#venn
+venn <- amp_venn(data = data, group_by = "treatment", cut_f = 50, detailed_output = T)
+venn2 <- amp_venn(data = data, group_by = "timepoint", cut_f = 70, detailed_output = T)
+
+bray_PCOA$plot+ labs(title = "PCoA", subtitle ="distance: Bray-Curtis")+theme_pubr()
 
