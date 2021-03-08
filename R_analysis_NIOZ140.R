@@ -9,11 +9,13 @@ library("DESeq2")
 library("microbiome")
 library("microbiomeutilities")
 library("TreeSummarizedExperiment")
-#install.packages("ggpubr")
 library(ggpubr)
 library("wesanderson")
 library("plotrix")
-
+library("FactoMineR")
+library("factoextra")
+library(usedist)
+library("heatmaply")
 #####data_import######
 tax <- as.matrix(read.delim('./data/taxTable_noSingletons.txt', row.names = 1, na.strings = "NA"))
 tax <- tax_table(tax)
@@ -268,11 +270,31 @@ colnames(taxa)[1] <- "OTU"
 
 
 data <-  amp_load(p_otu, metadata = map2, taxonomy = taxa, check.names=F)
-bray_PCOA <- amp_ordinate(data , transform = "none", type = "PCOA", distmeasure= "bray", sample_label_size=4, envfit_factor= c("treatment", "Material", "timepoint"), sample_color_by = "treatment", sample_label_by= "Material",sample_shape_by ="timepoint", species_plot = F, detailed_output=T)
+bray_PCOA <- amp_ordinate(data , transform = "none", type = "PCOA", distmeasure= "bray", sample_label_size=4, sample_color_by = "treatment", sample_label_by= "Material",sample_shape_by ="timepoint", species_plot = F, detailed_output=T)
 
 #venn
 venn <- amp_venn(data = data, group_by = "treatment", cut_f = 50, detailed_output = T)
 venn2 <- amp_venn(data = data, group_by = "timepoint", cut_f = 70, detailed_output = T)
 
 bray_PCOA$plot+ labs(title = "PCoA", subtitle ="distance: Bray-Curtis")+theme_pubr()
+
+
+############heatmap##############
+transposed_otu <-  t(as(otu_table(physeq_object), "matrix"))
+#bray_distance<-vegdist(as(otu_table(physeq_object), "matrix"), method="bray")
+bray_distance2<-vegdist(transposed_otu, method="bray")
+
+#devtools::install_github("kylebittinger/usedist")
+
+sample_bray <- (as(bray_distance2, "matrix"))
+row.names(sample_bray) <- map2$description
+colnames(sample_bray) <- map2$surface
+      
+pal <- wes_palette("Zissou1",70, type = "continuous")
+          
+heat <- heatmap(sample_bray, scale = "none", col = pal)
+
+
+heatmaply::heatmaply(sample_bray, row_text_angle = 0,
+                     column_text_angle = 90)
 
