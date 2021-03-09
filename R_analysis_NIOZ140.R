@@ -273,8 +273,11 @@ data <-  amp_load(p_otu, metadata = map2, taxonomy = taxa, check.names=F)
 bray_PCOA <- amp_ordinate(data , transform = "none", type = "PCOA", distmeasure= "bray", sample_label_size=4, sample_color_by = "treatment", sample_label_by= "Material",sample_shape_by ="timepoint", species_plot = F, detailed_output=T)
 
 #venn
-venn <- amp_venn(data = data, group_by = "treatment", cut_f = 50, detailed_output = T)
+venn <- amp_venn(data = data, group_by = "treatment", cut_f = 70, detailed_output = T)
 venn2 <- amp_venn(data = data, group_by = "timepoint", cut_f = 70, detailed_output = T)
+
+
+
 
 bray_PCOA$plot+ labs(title = "PCoA", subtitle ="distance: Bray-Curtis")+theme_pubr()
 
@@ -298,3 +301,102 @@ heat <- heatmap(sample_bray, scale = "none", col = pal)
 heatmaply::heatmaply(sample_bray, row_text_angle = 0,
                      column_text_angle = 90)
 
+
+
+###############################################ASV#############################################################################
+
+asvTable<-read_tsv("../foils_statia_2019/runs/dada2/asv/taxonomy_dada2/asvTable_noSingletons_no_1st_line.txt")
+rows <- asvTable$`#OTU ID`
+tax <- asvTable$taxonomy
+tax <- read_csv2(tax, col_names = c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"))
+tax <- as.data.frame(tax,  row.names = rows) %>% as.matrix() %>% tax_table()
+
+
+otu <- as.matrix(read.delim("./data/otuTable_noSingletons_no_first_line.txt", row.names = 1))
+otu <- otu_table(otu, taxa_are_rows = T)
+map <- sample_data(read.delim("./data/mapping_file_details.txt", row.names = 1, na.strings = c("NA", "")))
+physeq_object = merge_phyloseq(otu, tax, map)                 
+
+
+
+####basic_info_asv#####
+summarize_phyloseq(physeq_object)
+ntaxa(physeq_object)
+nsamples(physeq_object)  ###there's 71 samples in the OTU table and 74 in the mapping file any idea why? never mind, I found in the report that 3 of them had nothing whatsoever
+sample_names(physeq_object)
+taxa_names(physeq_object)
+rank_names(physeq_object)
+sample_sums(physeq_object)
+taxa_sums(physeq_object)
+min(sample_sums(physeq_object)) #it says 7 sequences here. In the report it says 8, not much of a difference but wondering how to deal wih a sample like that
+physeq_object <-  subset_samples(physeq_object, sample_names(physeq_object)!="NIOZ140.90") #eliminate the sample with 7seq
+#physeq_object <-  subset_samples(physeq_object,(sample_sums(physeq_object) >= 1000))
+max(sample_sums(physeq_object))
+
+#####subset T3 & merge asv####
+sub1 <- subset_samples(physeq_object, timepoint %in% c("T1", "T6"))
+sub2 <- subset_samples(physeq_object, surface=="negative_c")
+physeq_object <- merge_phyloseq(sub1, sub2)
+
+########## wonky taxonomy assignments asv###########
+get_taxa_unique(physeq_object, "Domain") # unassigned in Domains
+physeq_object <- subset_taxa(physeq_object, !is.na(Domain) & !Domain%in% c("", "Unassigned")) #let's eliminate those otus
+get_taxa_unique(physeq_object, "Domain") # all good now
+get_taxa_unique(physeq_object, "Phylum") # let's check the Phyla, there's "NA"
+physeq_object <- subset_taxa(physeq_object, !is.na(Phylum) & !Phylum%in% c("NA"," NA" )) 
+get_taxa_unique(physeq_object, "Phylum")
+length(get_taxa_unique(physeq_object,"Phylum"))
+physeq_object <- subset_taxa(physeq_object, !Order%in% c(" Chloroplast")) 
+physeq_object <- subset_taxa(physeq_object, !Family%in% c(" Mitochondria"))
+
+physeq_object <- prune_taxa(taxa_sums(physeq_object) > 1, physeq_object) #no singletons
+
+taxo <- as.data.frame(physeq_object@tax_table)
+for (i in 1:nrow(taxo)) {
+  for (y in 1:ncol(taxo)) {
+    if 
+    (any(str_detect(taxo[i,y], c("uncultured","Uncultured","metagenome", "Metagenome","unknown", "Unknown","NA")))) {
+      taxo[i,y] <- "unassigned" }
+  }
+}
+
+taxo <- tax_table(as.matrix(taxo))
+
+
+physeq_object <- merge_phyloseq(physeq_object@otu_table, taxo, map)
+
+
+#t1 <- subset_samples (physeq_object, timepoint=="T1")
+
+#t6 <- subset_samples(physeq_object, timepoint=="T6")
+
+
+#merge_samples(GlobalPatterns, group = factor(as.character(unlist(sample_data(GlobalPatterns)[,"SampleType"]))))
+#euk <- subset_taxa(physeq_object, Domain=="Eukaryota")
+#arch <- subset_taxa(physeq_object, Domain=="Archaea")
+#bact <- subset_taxa(physeq_object, Domain=="Bacteria")
+
+
+
+
+############### alpha div asv###################
+summarize_phyloseq(physeq_object)
+alpha_tab <-microbiome::alpha(physeq_object, index = "all")
+write.csv(alpha_tab, file = "./alpha_div/alpha_div_indexes_microbiome_2.csv")
+metad <- data.frame(physeq_object@sam_data) 
+metad$Shannon <- alpha_tab$diversity_shannon 
+metad$evenness_simpson <- alpha_tab$evenness_simpson 
+m <- subset_samples(physeq_object, timepoint %in% c("T1", "T6"))
+
+p <- ggboxplot(metad, x = "Material", y = "evenness_simpson",
+               color = "Material", palette =c("#5FB233FF" ,"#6A7F93FF" ,"#F57206FF" ,"#EB0F13FF", "#8F2F8BFF", "#1396DBFF"),
+               add = "jitter", shape = "treatment", size = 1) + facet_wrap(~timepoint)
+p
+
+
+a <- phyloseq::estimate_richness(physeq_object)
+write.csv(a, file = "./alpha_div/alpha_div_indexes_phyloseq_2.csv")
+plot <- plot_richness(m, "Material", "treatment", measures="Chao1")+facet_grid(treatment~timepoint)
+plot + geom_boxplot(data=plot$data, aes(Material,value,color=NULL), alpha=0.3)+ labs(title = "Alpha Diversity", subtitle ="Chao1", x =NULL , y = NULL )+theme_light()
+
+microbiome::plot_taxa_prevalence(physeq_object, "Phylum")+ theme(legend.position = "none") #prevalence
